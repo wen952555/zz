@@ -1,7 +1,10 @@
-const os = require('os');
-const path = require('path');
-const fs = require('fs');
+import os from 'os';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const HOME = os.homedir();
 
 // 动态解析 .env 文件以确定隧道模式
@@ -27,7 +30,7 @@ try {
   console.error("⚠️ 读取 .env 配置失败，将使用默认 Quick Tunnel 模式", error);
 }
 
-module.exports = {
+export default {
   apps: [
     {
       name: "alist",
