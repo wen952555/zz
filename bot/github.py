@@ -2,7 +2,7 @@
 import requests
 import urllib.parse
 from .config import get_next_github_account, get_account_count, GITHUB_POOL
-from .alist_api import get_token
+from .alist_api import get_token, get_file_info
 
 def escape_text(text):
     """转义 Markdown V1 特殊字符"""
@@ -29,15 +29,47 @@ def trigger_stream_action(base_url, raw_path, target_rtmp_url):
     token = account['token']
     pool_size = get_account_count()
 
-    # 路径处理与 URL 编码
-    if not raw_path.startswith("/"): raw_path = "/" + raw_path
-    
-    # ⚡️ 修复: 保留路径中的斜杠 '/' 不被转义，只转义文件名中的特殊字符 (如空格)
-    encoded_path = urllib.parse.quote(raw_path, safe='/')
-    video_url = f"{base_url}/d{encoded_path}"
-
-    # 获取 Alist Token 用于权限验证
+    # 获取 Alist Token
     alist_token = get_token() or ""
+
+    # -------------------------------------------------
+    # ⚡️ 核心修复: 获取真实直链或带签名的链接
+    # -------------------------------------------------
+    video_url = ""
+    
+    try:
+        # 1. 尝试通过 API 获取真实直链 (Raw URL)
+        # 这对于 PikPak/阿里云盘等非常重要，因为它们返回的是签名的 CDN 链接
+        # 如果直接用 /d/ 链接并配合 Header，重定向后 Header 会导致云厂商 401/403 错误
+        file_data = get_file_info(raw_path)
+        
+        if file_data and file_data.get("code") == 200:
+            raw_url = file_data["data"].get("raw_url", "")
+            if raw_url:
+                if raw_url.startswith("http"):
+                    # 这是一个远程直链 (如 PikPak CDN)，直接使用，不需要 Token
+                    video_url = raw_url
+                else:
+                    # 这是一个本地相对路径，拼接 Base URL
+                    video_url = f"{base_url}{raw_url}"
+                    # 本地文件通常需要鉴权，将 Token 放入 URL 参数中最安全
+                    if alist_token:
+                        sep = "&" if "?" in video_url else "?"
+                        video_url += f"{sep}token={alist_token}"
+    except Exception as e:
+        print(f"获取文件信息失败: {e}")
+
+    # 2. 如果 API 获取失败，回退到构造 /d/ 链接 (并使用 Token URL 参数)
+    if not video_url:
+        # 路径处理与 URL 编码
+        if not raw_path.startswith("/"): raw_path = "/" + raw_path
+        encoded_path = urllib.parse.quote(raw_path, safe='/')
+        video_url = f"{base_url}/d{encoded_path}"
+        # 显式追加 Token 参数
+        if alist_token:
+            video_url += f"?token={alist_token}"
+    
+    print(f"📺 推流链接已生成: {video_url}")
 
     # GitHub API 请求
     api_url = f"https://api.github.com/repos/{repo}/dispatches"
@@ -50,7 +82,8 @@ def trigger_stream_action(base_url, raw_path, target_rtmp_url):
         "client_payload": {
             "video_url": video_url,
             "rtmp_url": target_rtmp_url,
-            "alist_token": alist_token  # 传递 Token 给 Action
+            # Token 已整合进 URL，无需单独传递，但保留字段以防万一
+            "alist_token": "" 
         }
     }
 
@@ -88,7 +121,6 @@ def get_single_usage(repo, token):
         }
 
         # 1. 检查账号类型 (User vs Organization)
-        # 这一步非常重要，因为 billing API 的路径不同，且可以提前验证 Token 有效性
         type_url = f"https://api.github.com/users/{owner}"
         r_type = requests.get(type_url, headers=headers, timeout=5)
 
@@ -97,7 +129,6 @@ def get_single_usage(repo, token):
         elif r_type.status_code == 404:
              return False, "用户/组织不存在 (404)"
         elif r_type.status_code != 200:
-             # 如果连用户信息都读不到，直接返回错误
              return False, f"API 错误 {r_type.status_code}"
 
         account_type = r_type.json().get("type", "User")
@@ -118,8 +149,6 @@ def get_single_usage(repo, token):
         elif r.status_code == 403:
             return False, "权限不足 (缺少 user 权限)"
         elif r.status_code == 404 or r.status_code == 410:
-            # 404/410: Fine-grained Token 不支持 Billing，或者 API 对该类型账号不可用
-            # 这不代表 Token 无法用于推流，因此标记为成功但 limit=-1
             return True, {"used": 0, "limit": -1}
         else:
             return False, f"HTTP {r.status_code}"
@@ -136,13 +165,11 @@ def get_all_usage_stats():
         repo = acc['repo']
         success, info = get_single_usage(repo, acc['token'])
         
-        # 移除遮罩，直接显示完整用户名
         user = repo.split('/')[0]
         safe_name = escape_text(user)
         
         if success:
             if info.get('limit') == -1:
-                # 无法获取额度的情况 (Fine-grained token 等)
                 results.append(f"🟢 *{safe_name}*: `额度未知` (API受限)")
             else:
                 percent = 0
@@ -155,7 +182,6 @@ def get_all_usage_stats():
                 
                 results.append(f"{icon} *{safe_name}*: `{info['used']}` / `{info['limit']}` ({percent}%)")
         else:
-            # 错误信息必须转义，否则包含 _ 等字符会报错
             safe_info = escape_text(info)
             results.append(f"⚪ *{safe_name}*: ⚠️ {safe_info}")
             

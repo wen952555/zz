@@ -35,20 +35,16 @@ jobs:
         VIDEO_URL: ${{ github.event.client_payload.video_url || inputs.video_url }}
       run: |
         echo "🔍 正在检查视频链接连通性..."
-        echo "URL: $VIDEO_URL"
+        # 隐藏部分 URL 参数以防泄露 Token
+        DISPLAY_URL=$(echo "$VIDEO_URL" | sed 's/token=[^&]*/token=***/')
+        echo "URL: $DISPLAY_URL"
         
-        # 使用 curl 检查响应头，如果失败打印完整信息以便调试 (解决 530 问题排查)
-        # -I: 仅头信息
-        # -L: 跟随重定向
-        # --fail: 遇到错误码返回非零
+        # 使用 curl 检查 (跟随重定向)
         if curl -I -L --fail --connect-timeout 10 "$VIDEO_URL"; then
             echo "✅ 链接可用"
         else
-            echo "⚠️  Curl 检查失败，尝试获取详细响应以排查错误 (如 530/404)..."
+            echo "⚠️  Curl 检查失败，尝试获取详细响应以排查错误 (如 401/403/530)..."
             curl -v -L --connect-timeout 10 "$VIDEO_URL" || true
-            echo "----------------------------------------"
-            echo "⚠️ 注意: 如果看到 'Origin DNS Error' (530)，说明 Tunnel 域名失效或 Termux 端服务未运行。"
-            echo "----------------------------------------"
         fi
 
     - name: Start Streaming
@@ -56,11 +52,10 @@ jobs:
         # ⚡️ 核心修复: 使用 GitHub 表达式 (||) 处理变量
         VIDEO_URL: ${{ github.event.client_payload.video_url || inputs.video_url }}
         RTMP_URL: ${{ github.event.client_payload.rtmp_url || inputs.rtmp_url }}
-        ALIST_TOKEN: ${{ github.event.client_payload.alist_token || inputs.alist_token }}
+        # ALIST_TOKEN 不再需要注入 Header，因此这里不再使用
       run: |
         echo "---------------------------------------------------"
         echo "🚀 任务启动确认"
-        echo "📡 视频地址: $VIDEO_URL"
         echo "📺 推流目标: RTMP Server"
         echo "---------------------------------------------------"
 
@@ -85,12 +80,9 @@ jobs:
         CMD+=(-rw_timeout 15000000)
         CMD+=(-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
 
-        # 鉴权 Headers (修复 No trailing CRLF warning)
-        if [[ -n "$ALIST_TOKEN" ]]; then
-           echo "🔑 检测到 Token，已注入 Headers"
-           # 确保 Header 格式正确，添加换行符
-           CMD+=(-headers $'Authorization: '"$ALIST_TOKEN"$'\r\n')
-        fi
+        # ⚡️ 移除: Header 注入逻辑
+        # 因为 Bot 现在会生成带 Token 或签名的 URL，FFmpeg 不再需要 Header。
+        # 发送 Authorization Header 给 PikPak/OSS 会导致 401 错误。
 
         # 输入与输出
         CMD+=(-i "$VIDEO_URL")
