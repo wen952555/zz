@@ -20,23 +20,38 @@ def get_token():
         logger.error(f"无法获取 Alist 密码信息: {raw_output}")
         return None
 
-    # 解析密码
-    # `alist admin` 输出通常为 "admin: 123456"
-    password = raw_output.strip()
+    password = None
     
-    # 尝试匹配 "admin: xxxxx"
-    match = re.search(r'admin:\s*(\S+)', raw_output)
+    # 解析密码逻辑增强
+    # 策略1: 正则匹配常见输出格式 (admin: xxx 或 password: xxx)
+    # 使用 (.+) 匹配直到行尾，支持密码中包含空格或特殊字符
+    match = re.search(r'(?:admin|password):\s*(.+)', raw_output, re.IGNORECASE)
     if match:
         password = match.group(1).strip()
-    else:
-        # 如果没有 admin: 前缀，尝试取最后一行非空内容 (兜底策略)
+    
+    # 策略2: 如果正则失败，尝试倒序查找最后一行有效内容
+    if not password:
         lines = [l.strip() for l in raw_output.split('\n') if l.strip()]
-        if lines:
-            # 假设最后一行是密码
-            password = lines[-1]
+        # 过滤掉明显的日志行 (包含 time=, level=, [INFO] 等)
+        candidates = [
+            l for l in lines 
+            if "time=" not in l and "[INFO]" not in l and "level=" not in l
+        ]
+        if candidates:
+            last_line = candidates[-1]
+            # 如果包含冒号，可能是 "admin: 123"，尝试分割
+            if ":" in last_line:
+                parts = last_line.split(":", 1)
+                # 确保冒号后面有内容
+                if len(parts) > 1:
+                    password = parts[1].strip()
+                else:
+                    password = last_line
+            else:
+                password = last_line
 
     if not password:
-        logger.error("解析 Alist 密码为空")
+        logger.error(f"解析 Alist 密码失败，原始输出: {raw_output[:100]}...")
         return None
 
     try:
@@ -51,8 +66,7 @@ def get_token():
             _cached_token = data["data"]["token"]
             return _cached_token
         else:
-            # 记录更详细的错误，方便排查
-            logger.error(f"Alist 登录失败: {data}")
+            logger.error(f"Alist 登录失败: {data} (User: admin, Pass: {password})")
             return None
     except Exception as e:
         logger.error(f"Alist API 连接失败: {e}")
@@ -65,7 +79,7 @@ def fetch_file_list(path="/", page=1, per_page=100):
     # 第一次尝试
     token = get_token()
     if not token: 
-        return None, "无法连接 Alist 或密码错误。\n请尝试运行 `./set_pass.sh 您的密码` 并确保 Alist 正在运行。"
+        return None, "❌ 认证失败: 无法获取 Token。\n请检查:\n1. Alist 是否正在运行 (pm2 status)\n2. 密码是否正确 (尝试 ./set_pass.sh 重置)"
 
     url = f"{ALIST_API_URL}/api/fs/list"
     headers = {"Authorization": token}
@@ -98,7 +112,7 @@ def fetch_file_list(path="/", page=1, per_page=100):
 
         return None, f"API 错误: {data.get('message')}"
     except Exception as e:
-        return None, str(e)
+        return None, f"网络错误: {str(e)}"
 
 def get_file_info(path):
     """获取单个文件信息"""
