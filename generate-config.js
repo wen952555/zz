@@ -12,13 +12,11 @@ const HOME = os.homedir();
 // 1. 获取 Python 解释器路径
 let pythonExec = "python3";
 try {
-  // 尝试使用 command -v 查找 (比 which 更通用)
   const check = execSync("command -v python3").toString().trim();
   if (check) {
     pythonExec = check;
   }
 } catch (e) {
-  // 如果 command -v 失败，尝试硬编码路径或保持 python3
   const termuxPy = "/data/data/com.termux/files/usr/bin/python3";
   if (fs.existsSync(termuxPy)) {
     pythonExec = termuxPy;
@@ -27,7 +25,17 @@ try {
 
 console.log(`ℹ️ Python 路径: ${pythonExec}`);
 
-// 2. 准备目录
+// 2. 检测 termux-chroot (解决 DNS 问题的关键)
+let useProot = false;
+try {
+  execSync("command -v termux-chroot");
+  useProot = true;
+  console.log("ℹ️ 检测到 Termux 环境: 将启用 termux-chroot 修复 Cloudflared DNS");
+} catch (e) {
+  console.log("ℹ️ 未检测到 termux-chroot，将直接运行");
+}
+
+// 3. 准备目录
 const alistDataDir = path.join(HOME, 'alist-data');
 if (!fs.existsSync(alistDataDir)) {
     try {
@@ -38,11 +46,8 @@ if (!fs.existsSync(alistDataDir)) {
     }
 }
 
-// 3. 解析配置
-// ⚡️ 优化: 
-// 1. 使用 127.0.0.1 替代 localhost
-// 2. 添加 --protocol http2
-// 3. 添加 --edge-ip-version 4 (新): 强制 IPv4，提高移动网络兼容性
+// 4. 解析配置
+// 添加 --edge-ip-version 4 强制 IPv4，提高稳定性
 let tunnelArgs = ['tunnel', '--url', 'http://127.0.0.1:5244', '--no-autoupdate', '--protocol', 'http2', '--edge-ip-version', '4', '--metrics', '127.0.0.1:49500'];
 
 const envPath = path.join(HOME, '.env');
@@ -51,13 +56,11 @@ try {
   if (fs.existsSync(envPath)) {
     const envContent = fs.readFileSync(envPath, 'utf8');
     
-    // 辅助函数：提取变量并去除引号
     const getEnv = (key, defaultVal) => {
         const regex = new RegExp(`^${key}=(.*)$`, 'm');
         const match = envContent.match(regex);
         if (!match) return defaultVal;
         let val = match[1].trim();
-        // 去除开头和结尾的单引号或双引号
         if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
             val = val.slice(1, -1);
         }
@@ -68,7 +71,6 @@ try {
     const mode = getEnv('TUNNEL_MODE', 'quick');
 
     if (mode === 'token' && token) {
-      // Token 模式同样应用优化参数
       tunnelArgs = ['tunnel', 'run', '--token', token, '--protocol', 'http2', '--edge-ip-version', '4', '--metrics', '127.0.0.1:49500'];
       console.log(`ℹ️ 启用 Tunnel Token 模式 (Token 长度: ${token.length})`);
     } else {
@@ -79,14 +81,31 @@ try {
   console.error("⚠️ 读取 .env 失败，将使用默认配置:", error);
 }
 
-// 4. 定义 PM2 配置
+// 5. 定义 Cloudflared App 配置
+const cloudflaredApp = {
+    name: "tunnel",
+    script: path.join(HOME, "bin/cloudflared"),
+    args: tunnelArgs,
+    autorestart: true,
+    restart_delay: 5000,
+    max_restarts: 10
+};
+
+// 如果在 Termux 下，使用 termux-chroot 启动
+if (useProot) {
+    cloudflaredApp.script = "termux-chroot";
+    // 注意: args 的第一个参数必须是实际执行的二进制路径
+    cloudflaredApp.args = [path.join(HOME, "bin/cloudflared"), ...tunnelArgs];
+}
+
+// 6. 最终 PM2 配置
 const config = {
   apps: [
     {
       name: "alist",
       script: path.join(HOME, "bin/alist"),
-      args: ["server", "--data", alistDataDir], // 显式指定数据目录
-      cwd: alistDataDir, // 设置工作目录
+      args: ["server", "--data", alistDataDir],
+      cwd: alistDataDir,
       autorestart: true,
       restart_delay: 5000,
       max_restarts: 10,
@@ -110,24 +129,11 @@ const config = {
         PYTHONUNBUFFERED: "1"
       }
     },
-    {
-      name: "tunnel",
-      script: path.join(HOME, "bin/cloudflared"),
-      args: tunnelArgs,
-      autorestart: true,
-      restart_delay: 5000,
-      max_restarts: 10,
-      // ⚡️ 关键环境变量:
-      // GODEBUG=netdns=go: 强制 Go 使用内置 DNS 解析器 (读取 /etc/resolv.conf)，
-      // 而不是使用 Android 的 CGO 解析器 (在 Termux 下经常解析本地地址 [::1]:53 失败)
-      env: {
-        "GODEBUG": "netdns=go"
-      }
-    }
+    cloudflaredApp
   ]
 };
 
-// 5. 写入文件
+// 7. 写入文件
 const outputPath = path.join(__dirname, 'ecosystem.config.json');
 try {
   fs.writeFileSync(outputPath, JSON.stringify(config, null, 2));

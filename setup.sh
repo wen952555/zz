@@ -30,11 +30,14 @@ pkg update -y || true
 pkg upgrade -y || true
 
 echo -e "\033[1;36m>>> [2/5] 安装必要依赖...\033[0m"
-# ⚡️ 关键修改: 直接安装 alist 包 (Termux 官方源已收录，无需手动下载)
-pkg install -y python nodejs aria2 ffmpeg git vim curl wget tar openssl-tool build-essential libffi termux-tools ca-certificates alist
+# ⚡️ 关键修改: 
+# 1. 添加 proot (用于模拟 /etc/resolv.conf 路径，解决 DNS 问题)
+# 2. 直接安装 alist
+pkg install -y python nodejs aria2 ffmpeg git vim curl wget tar openssl-tool build-essential libffi termux-tools ca-certificates alist proot
 
-# --- 修复 Termux DNS (解决 Cloudflared 无法解析的问题) ---
-# Cloudflared (Go程序) 在 Termux 下经常因为找不到 resolv.conf 而尝试连接 [::1]:53 导致报错
+# --- 修复 Termux DNS (配合 proot 使用) ---
+# Cloudflared (Go程序) 需要 /etc/resolv.conf 才能正常解析域名
+# 我们在 $PREFIX/etc/resolv.conf 创建文件，稍后通过 termux-chroot 映射到 /etc/resolv.conf
 RESOLV_CONF="$PREFIX/etc/resolv.conf"
 if [ ! -f "$RESOLV_CONF" ] || [ ! -s "$RESOLV_CONF" ]; then
     echo "🔧 修复 DNS 配置 (创建 $RESOLV_CONF)..."
