@@ -1,3 +1,4 @@
+
 #!/data/data/com.termux/files/usr/bin/bash
 
 # ==========================================
@@ -160,7 +161,7 @@ fi
 
 # --- 5. 赋予脚本执行权限 ---
 echo "🔧 设置脚本权限..."
-chmod +x start.sh update.sh monitor.sh
+chmod +x start.sh update.sh monitor.sh set_pass.sh
 
 echo "--------------------------------------------------------"
 echo "✅ Termux 环境部署完成！"
