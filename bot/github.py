@@ -55,13 +55,26 @@ def trigger_stream_action(base_url, raw_path, target_rtmp_url):
     }
 
     try:
-        r = requests.post(api_url, headers=headers, json=data)
+        r = requests.post(api_url, headers=headers, json=data, timeout=10)
+        
+        # 简单遮罩
+        mask_repo = repo.split('/')[0] + "/..."
+        safe_repo = escape_text(mask_repo)
+
         if r.status_code == 204:
-            # 简单的混淆显示 Token
-            mask_repo = repo.split('/')[0] + "/..."
-            return True, f"✅ 已发送至 Runner (池: {pool_size})\n👤 账号: `{escape_text(mask_repo)}`", video_url
+            # 204 表示 GitHub 成功接收了请求
+            msg = f"✅ *指令已发送* (账号池: {pool_size})\n"
+            msg += f"👤 仓库: `{safe_repo}`\n\n"
+            msg += "⚠️ *如果直播没开始:*\n"
+            msg += "请检查你的 GitHub 仓库中是否存在 `.github/workflows/stream.yml` 文件。\n"
+            msg += "👉 *Bot 只是发送指令，实际推流由 GitHub 运行你仓库里的文件。*"
+            return True, msg, video_url
+        elif r.status_code == 404:
+            return False, f"❌ 找不到仓库 `{safe_repo}` (404)\n可能原因: 仓库名填错 / Token 权限不足 / 仓库是私有的", video_url
+        elif r.status_code == 401:
+            return False, f"❌ Token 无效 (401)\n请检查 GITHUB_ACCOUNTS_LIST 配置", video_url
         else:
-            return False, f"❌ GitHub API 错误 ({escape_text(repo)}): {r.status_code}\n{escape_text(r.text)}", video_url
+            return False, f"❌ GitHub 拒绝: {r.status_code}\n{escape_text(r.text)}", video_url
     except Exception as e:
         return False, f"❌ 网络请求失败: {escape_text(str(e))}", video_url
 
