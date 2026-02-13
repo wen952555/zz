@@ -3,12 +3,12 @@
 ENV_FILE="$HOME/.env"
 export PATH="$HOME/bin:$PATH"
 
-# 1. 申请唤醒锁，防止息屏后 CPU 降频或休眠
+# 1. 申请唤醒锁
 echo "🔒 申请 Termux 唤醒锁 (Wake Lock)..."
 termux-wake-lock
 
 if [ -f "$ENV_FILE" ]; then
-    echo ">>> 加载配置文件: $ENV_FILE"
+    echo ">>> 加载环境变量..."
     set -a
     source "$ENV_FILE"
     set +a
@@ -17,19 +17,23 @@ else
     exit 1
 fi
 
-# 2. 清理旧的或无法上传的 .cjs 文件
-if [ -f "ecosystem.config.cjs" ]; then
-    echo "🧹 清理残留文件 ecosystem.config.cjs..."
-    rm ecosystem.config.cjs
+# 2. 生成 PM2 配置文件 (避免 ESM/CJS 兼容性问题)
+echo "⚙️ 生成 PM2 任务配置..."
+if [ -f "generate-config.js" ]; then
+    node generate-config.js
+else
+    echo "❌ 错误: 找不到 generate-config.js 文件"
+    exit 1
 fi
-if [ -f "pm2.config.cjs" ]; then
-    rm pm2.config.cjs
-fi
+
+# 3. 清理旧的 JS/CJS 配置文件，防止 PM2 混淆
+echo "🧹 清理旧配置文件..."
+rm -f ecosystem.config.js ecosystem.config.cjs pm2.config.cjs
 
 echo "✅ 正在启动 PM2 服务组..."
 
-# 3. 使用标准 JS 配置文件启动
-pm2 start ecosystem.config.js
+# 4. 使用生成的 JSON 启动
+pm2 start ecosystem.config.json
 pm2 save
 
 echo "-----------------------------------"
