@@ -1,3 +1,4 @@
+
 # Termux Alist Bot
 
 专为 **Android Termux** 打造的轻量级网盘与下载机器人。
@@ -8,7 +9,7 @@
 *   🚀 **内网穿透**: 内置 Cloudflare Tunnel，无公网 IP 也能访问。
 *   🤖 **Telegram 控制**: 在 TG 上管理文件、添加下载任务。
 *   ⬇️ **离线下载**: 集成 Aria2，支持 http/ftp/magnet 下载。
-*   🔄 **自动更新**: 代码推送到 GitHub，手机端自动同步升级。
+*   📺 **云端推流**: 利用 GitHub Actions 将网盘视频推送到 Telegram 直播间。
 
 ## ⚠️ 关键设置 (Android 12+)
 
@@ -42,21 +43,35 @@ adb shell "/system/bin/device_config put activity_manager max_phantom_processes 
 
 6.  **启动**: `./start.sh`
 
-## 📝 配置文件说明 (~/.env)
+## ⚙️ 配置详解
 
-| 变量名 | 必填 | 说明 |
-| :--- | :--- | :--- |
-| `BOT_TOKEN` | ✅ | Telegram 机器人 Token |
-| `ADMIN_ID` | ✅ | 你的 Telegram 用户 ID |
-| `TUNNEL_MODE` | ✅ | `quick` (随机) 或 `token` (固定) |
-| `CLOUDFLARE_TOKEN` | ❌ | 固定域名模式必须填 |
-| `ALIST_DOMAIN` | ❌ | 固定域名地址 (不带http) |
-| `ARIA2_RPC_SECRET` | ❌ | Aria2 密码，推荐设置 |
-| `TG_RTMP_URL` | ❌ | 直播推流地址 |
+### 1. 基础配置
+| 变量名 | 说明 |
+| :--- | :--- |
+| `BOT_TOKEN` | 必填，Telegram 机器人 Token |
+| `ADMIN_ID` | 必填，你的 Telegram 用户 ID |
+
+### 2. GitHub 推流配置 (可选)
+如果你想使用 `/stream` 命令将网盘视频推流到 TG 直播间，需要配置 `GITHUB_ACCOUNTS_LIST`。
+
+1.  **Fork 仓库**: 将本项目 Fork 到你自己的 GitHub 账号。
+2.  **获取 Token**:
+    *   进入 GitHub Settings -> Developer settings -> Personal access tokens (Tokens classic)。
+    *   Generate new token。
+    *   **⚠️ 必须勾选以下权限**:
+        *   `repo` (Full control)
+        *   `workflow`
+        *   `user` (用于读取额度)
+3.  **填写配置**:
+    ```bash
+    # 格式: 用户名/仓库名|Token
+    GITHUB_ACCOUNTS_LIST=yourname/bot-repo|ghp_xxxx123456
+    ```
 
 ## 📂 目录结构
 
 *   `~/bin/`: 存放二进制文件 (alist, cloudflared)
+*   `~/alist-data/`: Alist 数据库与配置
 *   `~/.aria2/`: Aria2 配置与会话
 *   `~/downloads/`: 默认下载目录
 *   `~/.env`: **配置文件 (位于 Termux 根目录)**

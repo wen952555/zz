@@ -40,7 +40,7 @@ else
     echo "🧪 验证 Alist 二进制..."
     if ! "$HOME/bin/alist" version > /dev/null 2>&1; then
          echo "❌ Alist 文件似乎已损坏，无法运行。"
-         echo "💡 建议运行: rm ~/bin/alist && ./setup.sh"
+         echo "💡 建议运行: ./setup.sh 进行修复"
          exit 1
     fi
 fi
@@ -86,11 +86,24 @@ echo "✅ 正在启动 PM2 服务组..."
 pm2 start ecosystem.config.json
 pm2 save
 
+echo "⏳ 等待服务启动 (3秒)..."
+sleep 3
+
+# 7. 检查 Alist 状态 (关键修复)
+if pm2 list | grep "alist" | grep -q "online"; then
+    echo "✅ Alist 启动成功"
+else
+    echo "❌ Alist 启动失败！"
+    echo "📋 正在读取 Alist 错误日志:"
+    echo "--------------------------------"
+    pm2 logs alist --lines 10 --nostream
+    echo "--------------------------------"
+    echo "💡 提示: 可能是端口占用或配置文件损坏。"
+    echo "👉 尝试运行: rm -rf ~/alist-data/config.json 并重启"
+fi
+
 echo "-----------------------------------"
 echo "🚀 服务已在后台运行"
 echo "-----------------------------------"
-echo "❓ 如果 Bot 无反应，请尝试以下操作:"
-echo "   1. 检查日志: pm2 logs bot"
-echo "   2. 检查网络: 确保 Termux 能连接 Telegram API"
-echo "   3. 检查配置: cat ~/.env (注意保护 Token)"
+echo "❓ 如果 Cloudflare 报错 1033，说明 Alist 未启动，请检查上方日志。"
 echo "-----------------------------------"

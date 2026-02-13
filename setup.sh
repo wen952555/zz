@@ -66,34 +66,34 @@ else
     echo "✅ Cloudflared 已存在 ($CLOUDFLARED_BIN)"
 fi
 
-# --- 2. 安装 Alist ---
+# --- 2. 安装/修复 Alist ---
 ALIST_BIN="$HOME/bin/alist"
-if [ ! -f "$ALIST_BIN" ]; then
-    echo "⬇️ 正在下载 Alist..."
-    
-    # 尝试自动获取最新版本号
-    LATEST_TAG=$(curl -sL https://api.github.com/repos/alist-org/alist/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    
-    # 如果获取失败（为空），使用备用版本 v3.42.0 (确保安装能继续)
-    if [ -z "$LATEST_TAG" ]; then
-        echo "⚠️ 自动获取 Alist 版本失败，使用默认版本 v3.42.0"
-        LATEST_TAG="v3.42.0"
-    fi
-    
-    echo "安装版本: $LATEST_TAG"
-    DOWNLOAD_URL="https://github.com/alist-org/alist/releases/download/${LATEST_TAG}/alist-${ALIST_ARCH}.tar.gz"
-    
-    echo "下载地址: $DOWNLOAD_URL"
-    wget -O alist.tar.gz "$DOWNLOAD_URL"
-    
-    # 解压并安装
+
+# 强制停止现有进程以避免文件占用
+pm2 stop alist >/dev/null 2>&1 || true
+
+echo "⬇️ 正在安装/修复 Alist (稳定版)..."
+
+# 强制指定一个极其稳定的版本，避免 Latest 获取到 beta 或 buggy 版本
+# v3.41.0 是公认的稳定版本
+STABLE_VERSION="v3.41.0"
+DOWNLOAD_URL="https://github.com/alist-org/alist/releases/download/${STABLE_VERSION}/alist-${ALIST_ARCH}.tar.gz"
+
+echo "目标版本: $STABLE_VERSION"
+echo "下载地址: $DOWNLOAD_URL"
+
+# 删除旧文件，确保纯净安装
+rm -f "$ALIST_BIN" alist.tar.gz alist
+
+if wget -O alist.tar.gz "$DOWNLOAD_URL"; then
     tar -zxvf alist.tar.gz
     chmod +x alist
     mv alist "$ALIST_BIN"
-    rm alist.tar.gz
-    echo "✅ Alist 安装完成"
+    rm -f alist.tar.gz
+    echo "✅ Alist 已更新至稳定版"
 else
-    echo "✅ Alist 已存在 ($ALIST_BIN)"
+    echo "❌ 下载失败，请检查网络连接 (可能需要魔法)"
+    exit 1
 fi
 
 # --- 3. 生成配置文件 ---
@@ -151,11 +151,7 @@ chmod +x start.sh update.sh monitor.sh
 echo "--------------------------------------------------------"
 echo "✅ Termux 环境部署完成！"
 echo "--------------------------------------------------------"
-echo "📂 你的配置文件位于: $HOME/.env"
-echo "--------------------------------------------------------"
-echo "⚠️  重要提示 (Android 12+):"
-echo "   为了防止后台进程被杀，请务必执行以下 ADB 命令(在电脑上)或使用无线调试:"
-echo "   adb shell \"/system/bin/device_config put activity_manager max_phantom_processes 2147483647\""
+echo "⚠️  注意: 已强制重装 Alist 为稳定版 ($STABLE_VERSION)。"
 echo "--------------------------------------------------------"
 echo "👉 现在请运行: ./start.sh"
 echo "--------------------------------------------------------"
