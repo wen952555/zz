@@ -1,23 +1,20 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
 # ==========================================
-# Termux Alist Bot 部署脚本 (增强自动换源版)
+# Termux Alist Bot 部署脚本 (官方源版)
 # ==========================================
 set -e
 
-# 检测架构
+# 检测架构 (仅用于 Cloudflared)
 ARCH=$(uname -m)
 case $ARCH in
     aarch64)
-        ALIST_ARCH="linux-arm64"
         CF_ARCH="linux-arm64"
         ;;
     arm*)
-        ALIST_ARCH="linux-arm-7"
         CF_ARCH="linux-arm"
         ;;
     x86_64)
-        ALIST_ARCH="linux-amd64"
         CF_ARCH="linux-amd64"
         ;;
     *)
@@ -32,8 +29,8 @@ pkg update -y || true
 pkg upgrade -y || true
 
 echo -e "\033[1;36m>>> [2/5] 安装必要依赖...\033[0m"
-# 增加 ca-certificates 防止 SSL 报错
-pkg install -y python nodejs aria2 ffmpeg git vim curl wget tar openssl-tool build-essential libffi termux-tools ca-certificates
+# ⚡️ 关键修改: 直接安装 alist 包 (Termux 官方源已收录，无需手动下载)
+pkg install -y python nodejs aria2 ffmpeg git vim curl wget tar openssl-tool build-essential libffi termux-tools ca-certificates alist
 
 echo -e "\033[1;36m>>> [3/5] 安装 Python 库...\033[0m"
 # Termux 禁止使用 pip 升级自身，这里只安装依赖包
@@ -54,7 +51,7 @@ fi
 mkdir -p "$HOME/bin"
 export PATH="$HOME/bin:$PATH"
 
-echo -e "\033[1;36m>>> [5/5] 下载核心组件 ($ARCH)...\033[0m"
+echo -e "\033[1;36m>>> [5/5] 配置核心组件...\033[0m"
 
 # --- 1. 安装 Cloudflared ---
 CLOUDFLARED_BIN="$HOME/bin/cloudflared"
@@ -68,83 +65,36 @@ else
     echo "✅ Cloudflared 已存在 ($CLOUDFLARED_BIN)"
 fi
 
-# --- 2. 安装/修复 Alist (增强自动换源逻辑) ---
+# --- 2. 配置 Alist (官方源) ---
 ALIST_BIN="$HOME/bin/alist"
-STABLE_VERSION="v3.41.0"
-ALIST_FILE="alist.tar.gz"
 
 # 强制停止现有进程
 pm2 stop alist >/dev/null 2>&1 || true
 
-# 定义下载源数组 (优化镜像列表)
-MIRRORS=(
-    "https://github.com/alist-org/alist/releases/download/${STABLE_VERSION}/alist-${ALIST_ARCH}.tar.gz"
-    "https://ghproxy.cn/https://github.com/alist-org/alist/releases/download/${STABLE_VERSION}/alist-${ALIST_ARCH}.tar.gz"
-    "https://gh-proxy.com/https://github.com/alist-org/alist/releases/download/${STABLE_VERSION}/alist-${ALIST_ARCH}.tar.gz"
-)
+echo "⚙️ 配置 Alist..."
 
-echo "⬇️ 正在安装/修复 Alist (目标版本: $STABLE_VERSION)..."
-echo "ℹ️ 将尝试自动切换下载源，直到下载成功。"
-
-DOWNLOAD_SUCCESS=false
-
-for URL in "${MIRRORS[@]}"; do
-    echo "------------------------------------------------"
-    echo "🌐 尝试源: $URL"
+# 检查 pkg 是否成功安装 alist
+if command -v alist &> /dev/null; then
+    SYSTEM_ALIST=$(command -v alist)
+    echo "✅ 检测到系统内置 Alist: $SYSTEM_ALIST"
     
-    # 清理旧文件
-    rm -f "$ALIST_BIN" "$ALIST_FILE" alist
-
-    # 尝试下载
-    # --no-check-certificate: 规避老旧设备或代理的 SSL 证书问题
-    # --user-agent: 伪装浏览器，防止被某些防火墙拦截
-    # --timeout=30: 延长超时时间
-    if wget --no-check-certificate --user-agent="Mozilla/5.0" --timeout=30 -O "$ALIST_FILE" "$URL"; then
-        echo "📦 下载完成，正在校验..."
-        
-        # 1. 检查是不是压缩包
-        if ! file "$ALIST_FILE" | grep -q "gzip compressed data"; then
-            echo "⚠️  文件校验失败: 不是有效的 gzip 包 (可能是 HTML 错误页)"
-            # 打印文件头查看内容
-            echo "--- 文件头内容 (前 200 字节) ---"
-            head -c 200 "$ALIST_FILE"
-            echo -e "\n----------------------------"
-            continue
-        fi
-
-        # 2. 尝试解压
-        if tar -zxvf "$ALIST_FILE"; then
-            chmod +x alist
-            mv alist "$ALIST_BIN"
-            rm -f "$ALIST_FILE"
-
-            # 3. 运行测试
-            echo "🧪 验证二进制文件..."
-            if "$ALIST_BIN" version > /dev/null 2>&1; then
-                echo "✅ Alist 安装成功！"
-                DOWNLOAD_SUCCESS=true
-                break # 成功则跳出循环
-            else
-                echo "⚠️  二进制运行失败 (架构不匹配或文件损坏)"
-                echo "🔍 错误详情:"
-                "$ALIST_BIN" version || true
-            fi
-        else
-            echo "⚠️  解压失败，文件可能已损坏"
-        fi
+    # 建立软链接，确保兼容 start.sh 和 generate-config.js
+    rm -f "$ALIST_BIN"
+    ln -sf "$SYSTEM_ALIST" "$ALIST_BIN"
+    
+    echo "🔗 已创建链接: ~/bin/alist -> $SYSTEM_ALIST"
+    
+    # 验证版本
+    echo "🧪 验证 Alist 运行..."
+    if "$ALIST_BIN" version > /dev/null 2>&1; then
+        echo "✅ Alist 运行正常！"
     else
-        echo "⚠️  下载连接超时或失败"
+        echo "⚠️  Alist 运行失败，请检查 pkg 安装。"
+        exit 1
     fi
-done
-
-if [ "$DOWNLOAD_SUCCESS" = false ]; then
-    echo "------------------------------------------------"
-    echo "❌ 所有源均下载失败！"
-    echo "💡 可能原因："
-    echo "1. 网络连接不稳定，请尝试切换 WiFi/流量"
-    echo "2. 需要开启 VPN/代理 (GitHub 在国内经常被阻断)"
-    echo "3. 镜像源暂时维护中"
-    echo "------------------------------------------------"
+else
+    echo "❌ 错误: 未找到 alist 命令。"
+    echo "尝试手动安装: pkg install alist"
     exit 1
 fi
 
@@ -203,6 +153,6 @@ chmod +x start.sh update.sh monitor.sh
 echo "--------------------------------------------------------"
 echo "✅ Termux 环境部署完成！"
 echo "--------------------------------------------------------"
-echo "👉 1. 请先运行: ./setup.sh (确保 Alist 下载无误)"
+echo "👉 1. 请先运行: ./setup.sh"
 echo "👉 2. 然后运行: ./start.sh"
 echo "--------------------------------------------------------"
