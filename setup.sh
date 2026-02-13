@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
 # ==========================================
-# Termux Alist Bot 部署脚本 (增强版)
+# Termux Alist Bot 部署脚本 (修复版)
 # ==========================================
 set -e
 
@@ -86,11 +86,20 @@ echo "下载地址: $DOWNLOAD_URL"
 rm -f "$ALIST_BIN" alist.tar.gz alist
 
 if wget -O alist.tar.gz "$DOWNLOAD_URL"; then
+    echo "📦 解压中..."
     tar -zxvf alist.tar.gz
     chmod +x alist
     mv alist "$ALIST_BIN"
     rm -f alist.tar.gz
-    echo "✅ Alist 已更新至稳定版"
+    
+    # 立即验证文件是否完好
+    if "$ALIST_BIN" version > /dev/null 2>&1; then
+        echo "✅ Alist 已成功更新至 $STABLE_VERSION"
+    else
+        echo "❌ Alist 文件似乎损坏，请尝试切换网络后重新运行 setup.sh"
+        rm -f "$ALIST_BIN"
+        exit 1
+    fi
 else
     echo "❌ 下载失败，请检查网络连接 (可能需要魔法)"
     exit 1
@@ -151,7 +160,8 @@ chmod +x start.sh update.sh monitor.sh
 echo "--------------------------------------------------------"
 echo "✅ Termux 环境部署完成！"
 echo "--------------------------------------------------------"
-echo "⚠️  注意: 已强制重装 Alist 为稳定版 ($STABLE_VERSION)。"
+echo "⚠️  注意: 已强制修复 Alist。"
 echo "--------------------------------------------------------"
-echo "👉 现在请运行: ./start.sh"
+echo "👉 1. 请先运行: ./setup.sh (确保下载成功)"
+echo "👉 2. 然后运行: ./start.sh"
 echo "--------------------------------------------------------"

@@ -8,10 +8,13 @@ echo "🔒 申请 Termux 唤醒锁 (Wake Lock)..."
 termux-wake-lock
 
 if [ -f "$ENV_FILE" ]; then
-    echo ">>> 加载环境变量..."
-    set -a
-    source "$ENV_FILE"
-    set +a
+    echo ">>> 检查环境变量配置..."
+    # ⚠️ 关键修改: 不再使用 source "$ENV_FILE"
+    # 因为 GITHUB_ACCOUNTS_LIST 包含 "|" 符号，直接 source 会导致 Bash 将其解析为管道命令而报错
+    # 这里只提取 BOT_TOKEN 用于检查，其他变量交给 Python (dotenv) 安全处理
+    
+    # 使用 grep 和 cut 安全提取 BOT_TOKEN (去除引号和回车符)
+    BOT_TOKEN=$(grep -E "^BOT_TOKEN=" "$ENV_FILE" | head -n 1 | cut -d '=' -f 2- | tr -d '"' | tr -d "'" | tr -d '\r')
 else
     echo "❌ 未找到 ~/.env 文件，请先运行 ./setup.sh"
     exit 1
@@ -40,8 +43,10 @@ else
     echo "🧪 验证 Alist 二进制..."
     if ! "$HOME/bin/alist" version > /dev/null 2>&1; then
          echo "❌ Alist 文件似乎已损坏，无法运行。"
-         echo "💡 建议运行: ./setup.sh 进行修复"
-         exit 1
+         echo "💡 检测到文件损坏，正在尝试自动修复..."
+         # 自动删除损坏文件，提示用户运行 setup
+         rm -f "$HOME/bin/alist"
+         MISSING_FILES=1
     fi
 fi
 
@@ -52,8 +57,8 @@ fi
 
 if [ $MISSING_FILES -eq 1 ]; then
     echo "-----------------------------------"
-    echo "⚠️ 检测到核心组件缺失，无法启动！"
-    echo "请重新运行安装脚本进行修复："
+    echo "⚠️ 检测到核心组件缺失或损坏！"
+    echo "请务必重新运行安装脚本进行修复："
     echo "👉 ./setup.sh"
     echo "-----------------------------------"
     exit 1
