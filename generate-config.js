@@ -1,3 +1,4 @@
+
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -38,8 +39,10 @@ if (!fs.existsSync(alistDataDir)) {
 }
 
 // 3. 解析配置
-// 默认隧道参数: 添加 --metrics localhost:49500 以便 System.py 检测存活
-let tunnelArgs = ['tunnel', '--url', 'http://localhost:5244', '--no-autoupdate', '--metrics', 'localhost:49500'];
+// ⚡️ 优化: 
+// 1. 使用 127.0.0.1 替代 localhost，防止 Termux 优先解析 IPv6 导致 502 Bad Gateway
+// 2. 添加 --protocol http2，修复 Termux 环境下 QUIC 协议连接不稳定的问题 (Error 530)
+let tunnelArgs = ['tunnel', '--url', 'http://127.0.0.1:5244', '--no-autoupdate', '--protocol', 'http2', '--metrics', '127.0.0.1:49500'];
 
 const envPath = path.join(HOME, '.env');
 
@@ -54,8 +57,8 @@ try {
     const mode = modeMatch ? modeMatch[1].trim() : 'quick';
 
     if (mode === 'token' && token) {
-      // 即使是 token 模式，也加上 metrics 端口
-      tunnelArgs = ['tunnel', 'run', '--token', token, '--metrics', 'localhost:49500'];
+      // Token 模式同样应用优化参数
+      tunnelArgs = ['tunnel', 'run', '--token', token, '--protocol', 'http2', '--metrics', '127.0.0.1:49500'];
     }
   }
 } catch (error) {

@@ -1,3 +1,4 @@
+
 #!/data/data/com.termux/files/usr/bin/bash
 
 ENV_FILE="$HOME/.env"
@@ -93,35 +94,52 @@ echo "✅ 正在启动 PM2 服务组..."
 pm2 start ecosystem.config.json
 pm2 save
 
-echo "⏳ 等待服务启动 (3秒)..."
-sleep 3
+echo "⏳ 等待服务启动 (5秒)..."
+sleep 5
 
-# 7. 检查 Alist 状态 (关键修复)
+# 7. 检查服务状态
+
+# --- Alist 检查 ---
 if pm2 list | grep "alist" | grep -q "online"; then
     echo "✅ Alist 启动成功"
-    
-    echo "-----------------------------------"
-    echo "🔑 获取 Alist 登录信息..."
-    # 使用正确的 --data 参数查询密码
-    ADMIN_INFO=$("$HOME/bin/alist" admin --data "$DATA_DIR" 2>/dev/null)
-    
-    if [ -n "$ADMIN_INFO" ]; then
-        echo "$ADMIN_INFO"
-    else
-        echo "⚠️ 无法自动获取密码，请尝试运行: ./set_pass.sh 123456"
-    fi
 else
     echo "❌ Alist 启动失败！"
-    echo "📋 正在读取 Alist 错误日志:"
-    echo "--------------------------------"
+    echo "📋 Alist 日志:"
     pm2 logs alist --lines 10 --nostream
-    echo "--------------------------------"
-    echo "💡 提示: 可能是端口占用或配置文件损坏。"
-    echo "👉 尝试运行: rm -rf ~/alist-data/config.json 并重启"
+fi
+
+# --- Tunnel 检查 ---
+if pm2 list | grep "tunnel" | grep -q "online"; then
+    echo "✅ Cloudflared Tunnel 启动成功"
+else
+    echo "❌ Cloudflared Tunnel 启动失败！"
+    echo "📋 Tunnel 日志:"
+    pm2 logs tunnel --lines 10 --nostream
+    echo "💡 提示: 如果是'Exec format error'，请重新运行 ./setup.sh 下载正确版本。"
+fi
+
+# --- 获取密码 ---
+if pm2 list | grep "alist" | grep -q "online"; then
+    echo "-----------------------------------"
+    echo "🔑 获取 Alist 登录信息..."
+    
+    # 优先检查是否存在预设密码文件
+    if [ -f "$HOME/.alist_pass" ]; then
+        PASS=$(cat "$HOME/.alist_pass")
+        echo "👤 用户名: admin"
+        echo "🔑 密码: $PASS (已保存)"
+    else
+        # 自动获取
+        ADMIN_INFO=$("$HOME/bin/alist" admin --data "$DATA_DIR" 2>/dev/null)
+        if [ -n "$ADMIN_INFO" ]; then
+            echo "$ADMIN_INFO"
+        else
+            echo "⚠️ 无法自动获取密码，请尝试运行: ./set_pass.sh 123456"
+        fi
+    fi
 fi
 
 echo "-----------------------------------"
-echo "🚀 服务已在后台运行"
-echo "-----------------------------------"
-echo "👉 修改密码请运行: ./set_pass.sh 新密码"
+echo "🚀 服务检查完成"
+echo "👉 如果推流失败 (Error 530)，请检查 Tunnel 日志。"
 echo "-----------------------------------"

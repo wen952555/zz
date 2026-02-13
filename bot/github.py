@@ -2,6 +2,7 @@
 import requests
 import urllib.parse
 from .config import get_next_github_account, get_account_count, GITHUB_POOL
+from .alist_api import get_token
 
 def trigger_stream_action(base_url, raw_path, target_rtmp_url):
     """
@@ -25,8 +26,13 @@ def trigger_stream_action(base_url, raw_path, target_rtmp_url):
 
     # 路径处理与 URL 编码
     if not raw_path.startswith("/"): raw_path = "/" + raw_path
-    encoded_path = urllib.parse.quote(raw_path)
+    
+    # ⚡️ 修复: 保留路径中的斜杠 '/' 不被转义，只转义文件名中的特殊字符 (如空格)
+    encoded_path = urllib.parse.quote(raw_path, safe='/')
     video_url = f"{base_url}/d{encoded_path}"
+
+    # 获取 Alist Token 用于权限验证
+    alist_token = get_token() or ""
 
     # GitHub API 请求
     api_url = f"https://api.github.com/repos/{repo}/dispatches"
@@ -38,7 +44,8 @@ def trigger_stream_action(base_url, raw_path, target_rtmp_url):
         "event_type": "start_stream",
         "client_payload": {
             "video_url": video_url,
-            "rtmp_url": target_rtmp_url
+            "rtmp_url": target_rtmp_url,
+            "alist_token": alist_token  # 传递 Token 给 Action
         }
     }
 

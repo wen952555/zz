@@ -26,7 +26,7 @@ def check_services_health():
     # Termux 中 psutil 经常拿不到进程列表，改为检测端口
     # Alist: 5244
     # Aria2: 6800
-    # Tunnel: 49500 (在 generate-config.js 中配置了 --metrics localhost:49500)
+    # Tunnel: 49500 (在 generate-config.js 中配置了 --metrics 127.0.0.1:49500)
     status = {
         'alist': check_port(5244),
         'aria2c': check_port(6800),

@@ -1,3 +1,4 @@
+
 name: Telegram Live Stream
 
 on:
@@ -22,21 +23,27 @@ jobs:
       env:
         VIDEO_URL: ${{ github.event.client_payload.video_url }}
         RTMP_URL: ${{ github.event.client_payload.rtmp_url }}
+        ALIST_TOKEN: ${{ github.event.client_payload.alist_token }}
       run: |
         echo "开始推流..."
         echo "源地址: $VIDEO_URL"
         echo "目标: TG 直播服务器"
         
-        # 使用 FFmpeg 推流
-        # -user_agent: 伪装 UA 防止 Alist/网盘拦截
-        # -re: 按原速率读取 (模拟直播)
-        # -i: 输入 URL
-        # -c:v copy: 视频流直接复制，不转码 (关键！节省资源且保持原画)
-        # -c:a aac: 音频转码为 AAC (Telegram 兼容性最好)
-        # -ar 44100 -b:a 128k -ac 2: 音频参数
-        # -f flv: 输出为 FLV 格式推送到 RTMP
+        # 构建 Headers
+        # 即使文件需要密码，带上 Authorization 头也能直接读取
+        HEADERS=""
+        if [ -n "$ALIST_TOKEN" ]; then
+             HEADERS="Authorization: $ALIST_TOKEN"
+        fi
         
-        ffmpeg -user_agent "Mozilla/5.0" -re -i "$VIDEO_URL" \
+        # 使用 FFmpeg 推流
+        # -headers: 添加认证头 (必须在 -i 之前)
+        # -user_agent: 伪装 UA 防止拦截
+        # -re: 按原速率读取 (模拟直播)
+        # -c:v copy: 视频流直接复制
+        # -c:a aac: 音频转码为 AAC
+        
+        ffmpeg -headers "$HEADERS" -user_agent "Mozilla/5.0" -re -i "$VIDEO_URL" \
           -c:v copy \
           -c:a aac -ar 44100 -b:a 128k -ac 2 \
           -f flv "$RTMP_URL"
