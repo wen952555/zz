@@ -116,6 +116,18 @@ def restart_pm2_services():
     except Exception as e: return False, f"❌ 失败: {str(e)}"
 
 def get_admin_pass():
+    """获取 Alist 密码，优先读取文件，失败则尝试解析命令行输出"""
+    
+    # 策略 1: 读取 set_pass.sh 生成的密码文件 (最可靠)
+    pass_file = os.path.join(HOME_DIR, ".alist_pass")
+    if os.path.exists(pass_file):
+        try:
+            with open(pass_file, "r") as f:
+                content = f.read().strip()
+                if content: return content
+        except Exception: pass
+
+    # 策略 2: 运行 alist admin 解析输出 (兜底)
     try:
         # 指定数据目录查询密码
         data_dir = os.path.join(HOME_DIR, "alist-data")
@@ -124,7 +136,7 @@ def get_admin_pass():
         # 增加超时限制，防止卡死
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=10).decode('utf-8').strip()
         
-        # ⚠️ 关键修复: 去除 ANSI 颜色代码 (Termux 环境常见)
+        # 去除 ANSI 颜色代码 (Termux 环境常见)
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         clean_output = ansi_escape.sub('', output)
         

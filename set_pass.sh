@@ -26,6 +26,11 @@ echo "📂 数据目录: $DATA_DIR"
 if alist admin set "$NEW_PASS" --data "$DATA_DIR"; then
     echo "✅ 数据库更新成功"
     
+    # ⚡️ 关键修改: 保存密码到文件，供 Bot 直接读取
+    # 这样 Bot 就不需要去解析 alist admin 复杂的日志输出了
+    echo "$NEW_PASS" > "$HOME/.alist_pass"
+    chmod 600 "$HOME/.alist_pass"
+    
     echo "🔄 正在重启 Alist 以应用更改..."
     if command -v pm2 &> /dev/null; then
         pm2 restart alist > /dev/null 2>&1
