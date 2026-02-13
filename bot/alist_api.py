@@ -2,6 +2,7 @@
 import requests
 import logging
 import json
+import re
 from .system import get_admin_pass
 
 logger = logging.getLogger(__name__)
@@ -14,21 +15,37 @@ def get_token():
     global _cached_token
     if _cached_token: return _cached_token
     
-    password = get_admin_pass()
-    if not password or "失败" in password:
-        logger.error("无法获取 Alist 密码，API 调用失败")
+    raw_output = get_admin_pass()
+    if not raw_output or "失败" in raw_output:
+        logger.error(f"无法获取 Alist 密码信息: {raw_output}")
+        return None
+
+    # 解析密码
+    # `alist admin` 输出通常为 "admin: 123456" 或直接是密码
+    # 我们优先匹配 "admin: <password>" 格式
+    password = raw_output.strip()
+    match = re.search(r'admin:\s*(.+)', raw_output)
+    if match:
+        password = match.group(1).strip()
+    
+    # 简单的非空检查
+    if not password:
+        logger.error("解析 Alist 密码为空")
         return None
 
     try:
         # 尝试登录获取 Token
         url = f"{ALIST_API_URL}/api/auth/login"
-        r = requests.post(url, json={"username": "admin", "password": password}, timeout=5)
+        payload = {"username": "admin", "password": password}
+        
+        r = requests.post(url, json=payload, timeout=5)
         data = r.json()
+        
         if data.get("code") == 200:
             _cached_token = data["data"]["token"]
             return _cached_token
         else:
-            logger.error(f"Alist 登录失败: {data}")
+            logger.error(f"Alist 登录失败: {data} (User: admin, PassLen: {len(password)})")
             return None
     except Exception as e:
         logger.error(f"Alist API 连接失败: {e}")
@@ -36,8 +53,12 @@ def get_token():
 
 def fetch_file_list(path="/", page=1, per_page=100):
     """获取文件列表"""
+    global _cached_token
+    
+    # 第一次尝试
     token = get_token()
-    if not token: return None, "无法获取 Token，请检查 Alist 是否启动"
+    if not token: 
+        return None, "无法连接 Alist 或密码错误。\n请尝试运行 `./set_pass.sh 123456` 重置密码。"
 
     url = f"{ALIST_API_URL}/api/fs/list"
     headers = {"Authorization": token}
@@ -51,16 +72,31 @@ def fetch_file_list(path="/", page=1, per_page=100):
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=10)
         data = r.json()
+        
+        # 成功
         if data.get("code") == 200:
             return data["data"]["content"], None
-        else:
-            return None, f"API 错误: {data.get('message')}"
+            
+        # 如果是 401 或 Token 无效，尝试清除缓存重试一次
+        if data.get("code") in [401, 403]:
+            logger.info("Token 可能失效，尝试重新获取...")
+            _cached_token = None
+            token = get_token()
+            if token:
+                headers["Authorization"] = token
+                r = requests.post(url, headers=headers, json=payload, timeout=10)
+                data = r.json()
+                if data.get("code") == 200:
+                    return data["data"]["content"], None
+
+        return None, f"API 错误: {data.get('message')}"
     except Exception as e:
         return None, str(e)
 
 def get_file_info(path):
-    """获取单个文件信息 (用于获取直链等，暂时备用)"""
+    """获取单个文件信息"""
     token = get_token()
+    if not token: return None
     url = f"{ALIST_API_URL}/api/fs/get"
     headers = {"Authorization": token}
     try:
