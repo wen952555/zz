@@ -40,7 +40,7 @@ if [ $MISSING_FILES -eq 1 ]; then
     exit 1
 fi
 
-# 3. 生成 PM2 配置文件 (避免 ESM/CJS 兼容性问题)
+# 3. 生成 PM2 配置文件
 echo "⚙️ 生成 PM2 任务配置..."
 if [ -f "generate-config.js" ]; then
     node generate-config.js
@@ -49,13 +49,20 @@ else
     exit 1
 fi
 
-# 4. 清理旧的 JS/CJS 配置文件，防止 PM2 混淆
+# 4. 清理旧的 JS/CJS 配置文件
 echo "🧹 清理旧配置文件..."
 rm -f ecosystem.config.js ecosystem.config.cjs pm2.config.cjs
 
+# 5. 重置 PM2 状态 (修复 Process not found / TypeError 问题)
+echo "🔄 重置 PM2 进程状态 (防止冲突)..."
+# 杀死 PM2 守护进程以彻底清除内存中的错误状态
+pm2 kill > /dev/null 2>&1 || true
+# 稍微等待守护进程停止
+sleep 2
+
 echo "✅ 正在启动 PM2 服务组..."
 
-# 5. 使用生成的 JSON 启动
+# 6. 启动服务
 pm2 start ecosystem.config.json
 pm2 save
 
