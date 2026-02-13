@@ -48,6 +48,26 @@ else
     echo "✅ DNS 配置已存在"
 fi
 
+# --- 修复 Cloudflared SSL 证书问题 (配合 proot) ---
+# Cloudflared (Go) 在 Linux 下通常寻找 /etc/ssl/certs/ca-certificates.crt
+# Termux 的证书位于 $PREFIX/etc/tls/cert.pem
+# termux-chroot 将 $PREFIX/etc 映射为 /etc
+# 因此我们需要在 $PREFIX/etc 下建立符合 Linux 标准的软链接
+
+echo "🔧 修复 SSL 证书路径..."
+# 确保目标目录存在
+mkdir -p "$PREFIX/etc/ssl/certs"
+
+# 1. 标准 Linux 路径 (Debian/Ubuntu)
+rm -f "$PREFIX/etc/ssl/certs/ca-certificates.crt"
+ln -sf "$PREFIX/etc/tls/cert.pem" "$PREFIX/etc/ssl/certs/ca-certificates.crt"
+
+# 2. 其他常见路径 (Alpine/Generic)
+rm -f "$PREFIX/etc/ssl/cert.pem"
+ln -sf "$PREFIX/etc/tls/cert.pem" "$PREFIX/etc/ssl/cert.pem"
+
+echo "✅ SSL 证书链接已建立"
+
 echo -e "\033[1;36m>>> [3/5] 安装 Python 库...\033[0m"
 # Termux 禁止使用 pip 升级自身，这里只安装依赖包
 if [ -f "bot/requirements.txt" ]; then
