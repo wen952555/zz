@@ -58,9 +58,20 @@ async def monitor_services_job(context: ContextTypes.DEFAULT_TYPE):
 ITEMS_PER_PAGE = 10
 
 def escape_md(text):
-    """简单的 Markdown 转义 (主要处理反引号，用于代码块内)"""
+    """
+    Markdown V1 代码块转义
+    主要用于将文本放入 `...` 中时，将 ` 替换为 '，防止破坏代码块结构。
+    """
     if not text: return ""
-    return text.replace("`", "'")
+    return str(text).replace("`", "'")
+
+def escape_text(text):
+    """
+    Markdown V1 普通文本转义
+    用于在代码块之外显示的文本，转义 *, _, `, [
+    """
+    if not text: return ""
+    return str(text).replace("_", "\\_").replace("*", "\\*").replace("`", "\\`").replace("[", "\\[")
 
 async def render_browser(update: Update, context: ContextTypes.DEFAULT_TYPE, path="/", page=0, edit_msg=False):
     """核心渲染函数：渲染文件列表按钮"""
@@ -218,7 +229,12 @@ async def browser_callback_handler(update: Update, context: ContextTypes.DEFAULT
             
             success, msg = add_aria2_task(dl_url)
             safe_name = escape_md(item['name'])
-            # msg 通常是 safe 的，但为了保险起见，如果 msg 也是动态的，最好也处理一下，这里暂且保留
+            
+            # 如果失败，msg 可能是包含特殊字符的错误信息，需要转义
+            # 如果成功，msg 包含 GID 的代码块，是安全的
+            if not success:
+                msg = escape_text(msg)
+                
             await query.message.reply_text(f"📥 *请求下载:*\n`{safe_name}`\n\n{msg}", parse_mode=ParseMode.MARKDOWN)
 
 async def browser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -266,7 +282,7 @@ async def trigger_stream_logic(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     success, msg, _ = trigger_stream_action(base_url, path, target_rtmp)
-    # GitHub Action 返回的消息通常包含 URL，Markdown 解析需要小心，这里假设 msg 是安全的或由我们控制
+    # GitHub Action 返回的消息已经过 escape_text 处理
     await context.bot.send_message(chat_id=update.effective_chat.id, text=msg, parse_mode=ParseMode.MARKDOWN)
 
 
@@ -286,6 +302,7 @@ async def download_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("用法: `/dl http://example.com/file.zip`", parse_mode=ParseMode.MARKDOWN)
         return
     success, msg = add_aria2_task(context.args[0])
+    if not success: msg = escape_text(msg)
     await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
 async def trigger_stream(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -304,15 +321,15 @@ async def add_key_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(args) < 2:
         await update.message.reply_text("用法: `/addkey <名称> <密钥>`", parse_mode=ParseMode.MARKDOWN)
         return
-    # key name 是用户输入的，可能包含 markdown 字符，这里不使用 markdown 格式返回以防万一
     if add_key(args[0], args[1]):
-        await update.message.reply_text(f"✅ 已保存: {args[0]}")
+        # 将参数放入代码块中以防特殊字符
+        await update.message.reply_text(f"✅ 已保存: `{escape_md(args[0])}`", parse_mode=ParseMode.MARKDOWN)
 
 async def del_key_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_auth(update.effective_user.id): return
     if not context.args: return
     if delete_key(context.args[0]):
-        await update.message.reply_text(f"🗑 已删除: {context.args[0]}")
+        await update.message.reply_text(f"🗑 已删除: `{escape_md(context.args[0])}`", parse_mode=ParseMode.MARKDOWN)
 
 async def list_keys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_auth(update.effective_user.id): return
@@ -323,7 +340,8 @@ async def list_keys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for k, v in keys.items(): 
         # 隐藏密钥部分，mask 处理
         mask_v = f"...{v[-4:]}" if len(v) > 4 else "***"
-        msg += f"🔸 {escape_md(k)}: `{mask_v}`\n"
+        # 键名放入代码块防止解析错误
+        msg += f"🔸 `{escape_md(k)}`: `{mask_v}`\n"
     await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -364,8 +382,6 @@ async def send_del_key_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("用法: `/delkey 名称`", parse_mode=ParseMode.MARKDOWN)
 
 async def send_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # get_system_stats 内部也是 markdown，通常是安全的，但如果 psutil 返回怪异字符可能会有问题
-    # 暂时认为它是安全的
     await update.message.reply_text(get_system_stats(), parse_mode=ParseMode.MARKDOWN)
 
 async def send_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):

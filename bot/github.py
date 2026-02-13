@@ -4,6 +4,11 @@ import urllib.parse
 from .config import get_next_github_account, get_account_count, GITHUB_POOL
 from .alist_api import get_token
 
+def escape_text(text):
+    """转义 Markdown V1 特殊字符"""
+    if not text: return ""
+    return str(text).replace("_", "\\_").replace("*", "\\*").replace("`", "\\`").replace("[", "\\[")
+
 def trigger_stream_action(base_url, raw_path, target_rtmp_url):
     """
     触发 GitHub Actions 进行推流
@@ -54,11 +59,11 @@ def trigger_stream_action(base_url, raw_path, target_rtmp_url):
         if r.status_code == 204:
             # 简单的混淆显示 Token
             mask_repo = repo.split('/')[0] + "/..."
-            return True, f"✅ 已发送至 Runner (池: {pool_size})\n👤 账号: `{mask_repo}`", video_url
+            return True, f"✅ 已发送至 Runner (池: {pool_size})\n👤 账号: `{escape_text(mask_repo)}`", video_url
         else:
-            return False, f"❌ GitHub API 错误 ({repo}): {r.status_code}\n{r.text}", video_url
+            return False, f"❌ GitHub API 错误 ({escape_text(repo)}): {r.status_code}\n{escape_text(r.text)}", video_url
     except Exception as e:
-        return False, f"❌ 网络请求失败: {str(e)}", video_url
+        return False, f"❌ 网络请求失败: {escape_text(str(e))}", video_url
 
 def get_single_usage(repo, token):
     """查询单个账号的额度使用情况"""
@@ -98,7 +103,9 @@ def get_all_usage_stats():
         
         # 简单遮罩处理
         user = repo.split('/')[0]
-        mask_name = user[:3] + "***" if len(user) > 3 else user
+        # 使用 ... 替代 *** 防止 Markdown 解析混淆，并进行转义
+        mask_name = user[:3] + "..." if len(user) > 3 else user
+        safe_name = escape_text(mask_name)
         
         if success:
             percent = 0
@@ -109,8 +116,10 @@ def get_all_usage_stats():
             if percent > 80: icon = "🟡"
             if percent > 95: icon = "🔴"
             
-            results.append(f"{icon} *{mask_name}*: `{info['used']}` / `{info['limit']}` ({percent}%)")
+            results.append(f"{icon} *{safe_name}*: `{info['used']}` / `{info['limit']}` ({percent}%)")
         else:
-            results.append(f"⚪ *{mask_name}*: ⚠️ {info}")
+            # 错误信息必须转义，否则包含 _ 等字符会报错
+            safe_info = escape_text(info)
+            results.append(f"⚪ *{safe_name}*: ⚠️ {safe_info}")
             
     return results

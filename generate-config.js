@@ -50,15 +50,29 @@ try {
   if (fs.existsSync(envPath)) {
     const envContent = fs.readFileSync(envPath, 'utf8');
     
-    const tokenMatch = envContent.match(/^CLOUDFLARE_TOKEN=(.+)$/m);
-    const modeMatch = envContent.match(/^TUNNEL_MODE=(.+)$/m);
+    // 辅助函数：提取变量并去除引号
+    const getEnv = (key, defaultVal) => {
+        const regex = new RegExp(`^${key}=(.*)$`, 'm');
+        const match = envContent.match(regex);
+        if (!match) return defaultVal;
+        let val = match[1].trim();
+        // 去除开头和结尾的单引号或双引号
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+        }
+        return val;
+    };
     
-    const token = tokenMatch ? tokenMatch[1].trim() : '';
-    const mode = modeMatch ? modeMatch[1].trim() : 'quick';
+    const token = getEnv('CLOUDFLARE_TOKEN', '');
+    const mode = getEnv('TUNNEL_MODE', 'quick');
 
     if (mode === 'token' && token) {
       // Token 模式同样应用优化参数
+      // 注意: Cloudflared 对 Token 格式非常敏感，必须确保没有多余空格或引号
       tunnelArgs = ['tunnel', 'run', '--token', token, '--protocol', 'http2', '--metrics', '127.0.0.1:49500'];
+      console.log(`ℹ️ 启用 Tunnel Token 模式 (Token 长度: ${token.length})`);
+    } else {
+        console.log(`ℹ️ 启用 Tunnel Quick 模式`);
     }
   }
 } catch (error) {

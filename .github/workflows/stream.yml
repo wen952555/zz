@@ -29,21 +29,24 @@ jobs:
         echo "源地址: $VIDEO_URL"
         echo "目标: TG 直播服务器"
         
-        # 构建 Headers
-        # 即使文件需要密码，带上 Authorization 头也能直接读取
-        HEADERS=""
+        # 构建 Headers 参数
+        # 注意：FFmpeg -headers 参数需要严格格式 (Key: Value\r\n)
+        HEADERS_OPTS=""
         if [ -n "$ALIST_TOKEN" ]; then
-             HEADERS="Authorization: $ALIST_TOKEN"
+             # 添加 User-Agent 和 Authorization
+             HEADERS_OPTS="-headers Authorization: $ALIST_TOKEN"
         fi
         
         # 使用 FFmpeg 推流
-        # -headers: 添加认证头 (必须在 -i 之前)
-        # -user_agent: 伪装 UA 防止拦截
-        # -re: 按原速率读取 (模拟直播)
-        # -c:v copy: 视频流直接复制
-        # -c:a aac: 音频转码为 AAC
+        # -re: 按原速率读取
+        # -reconnect 1: 尝试断线重连 (对 HTTP 530/502 有一定抵抗力)
+        # -reconnect_at_eof 1: 文件结束时尝试重连 (防止过早断开)
+        # -reconnect_streamed 1: 流式重连
+        # -reconnect_delay_max 5: 最大重连等待
         
-        ffmpeg -headers "$HEADERS" -user_agent "Mozilla/5.0" -re -i "$VIDEO_URL" \
+        ffmpeg $HEADERS_OPTS -user_agent "Mozilla/5.0" -re \
+          -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
+          -i "$VIDEO_URL" \
           -c:v copy \
           -c:a aac -ar 44100 -b:a 128k -ac 2 \
           -f flv "$RTMP_URL"
