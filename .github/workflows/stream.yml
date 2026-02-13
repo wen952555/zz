@@ -1,0 +1,42 @@
+name: Telegram Live Stream
+
+on:
+  repository_dispatch:
+    types: [start_stream]
+
+jobs:
+  stream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # 最长运行 6 小时
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install FFmpeg
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+
+    - name: Start Streaming
+      env:
+        VIDEO_URL: ${{ github.event.client_payload.video_url }}
+        RTMP_URL: ${{ github.event.client_payload.rtmp_url }}
+      run: |
+        echo "开始推流..."
+        echo "源地址: $VIDEO_URL"
+        echo "目标: TG 直播服务器"
+        
+        # 使用 FFmpeg 推流
+        # -user_agent: 伪装 UA 防止 Alist/网盘拦截
+        # -re: 按原速率读取 (模拟直播)
+        # -i: 输入 URL
+        # -c:v copy: 视频流直接复制，不转码 (关键！节省资源且保持原画)
+        # -c:a aac: 音频转码为 AAC (Telegram 兼容性最好)
+        # -ar 44100 -b:a 128k -ac 2: 音频参数
+        # -f flv: 输出为 FLV 格式推送到 RTMP
+        
+        ffmpeg -user_agent "Mozilla/5.0" -re -i "$VIDEO_URL" \
+          -c:v copy \
+          -c:a aac -ar 44100 -b:a 128k -ac 2 \
+          -f flv "$RTMP_URL"

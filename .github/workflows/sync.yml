@@ -1,0 +1,39 @@
+name: Upstream Sync
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # 每天 UTC 时间 0点 (北京时间早上8点) 运行一次
+  workflow_dispatch: # 允许手动点按钮触发
+
+jobs:
+  sync_latest_from_upstream:
+    name: Sync latest commits from upstream repo
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }} # 只有当这是 Fork 的仓库时才运行
+
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v3
+
+      - name: Sync upstream changes
+        id: sync
+        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
+        with:
+          # ⚠️⚠️⚠️ 请修改此处为你的【主账号】仓库 ⚠️⚠️⚠️
+          # 格式: 用户名/仓库名
+          # 例如: zhangsan/alist-bot-pro
+          upstream_sync_repo: YOUR_USERNAME/YOUR_REPO_NAME
+          
+          upstream_sync_branch: main
+          target_sync_branch: main
+          target_repo_token: ${{ secrets.GITHUB_TOKEN }} # 自动使用 GitHub 提供的 Token，无需配置
+          test_mode: false
+
+      - name: Sync check
+        if: failure()
+        run: |
+          echo "❌ 同步失败，请检查 upstream_sync_repo 配置是否正确，或者是否产生了代码冲突。"
+          exit 1

@@ -1,0 +1,5 @@
+{
+  "name": "zz",
+  "description": "Generate and download scripts for deploying Alist and Telegram Bot on Termux.",
+  "requestFramePermissions": []
+}
