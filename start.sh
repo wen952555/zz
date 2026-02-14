@@ -76,7 +76,16 @@ rm -f ecosystem.config.js ecosystem.config.cjs pm2.config.cjs
 
 # 5. 重置 PM2 状态
 echo "🔄 重置 PM2 进程状态..."
+pm2 delete all > /dev/null 2>&1 || true
 pm2 kill > /dev/null 2>&1 || true
+
+# ⚡️ 关键修复: 强力查杀残留的 Bot 进程 (防止 Conflict error)
+# 有时候 PM2 kill 杀不掉手动启动的 python 进程
+echo "🔪 清理残留进程..."
+pkill -f "bot.main" > /dev/null 2>&1 || true
+# 同时也尝试清理可能卡住的 cloudflared
+pkill -f "cloudflared" > /dev/null 2>&1 || true
+
 sleep 2
 
 echo "✅ 正在启动 PM2 服务组..."
