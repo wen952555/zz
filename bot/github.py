@@ -91,7 +91,7 @@ def trigger_stream_action(base_url, raw_path, target_rtmp_url, extra_payload=Non
         client_payload["video_url"] = video_url
         client_payload["mode"] = "standard"
         
-        display_msg = f"📺 *视频推流任务*\n📄 文件: `{escape_text(raw_path)}`"
+        display_msg = f"📺 *视频推流任务*\n📄 文件: `{escape_text(raw_path)}`\n\n💡 *提示*: GitHub 将先下载视频以确保流畅，直播可能会延迟 1-5 分钟启动 (取决于文件大小)。"
 
     # GitHub API 请求
     api_url = f"https://api.github.com/repos/{repo}/dispatches"

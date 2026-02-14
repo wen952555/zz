@@ -41,7 +41,7 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y ffmpeg python3-requests
+        sudo apt-get install -y ffmpeg python3-requests aria2
 
     - name: Prepare Radio Assets (Python Script)
       if: ${{ (github.event.client_payload.mode == 'radio') || (inputs.mode == 'radio') }}
@@ -200,17 +200,38 @@ jobs:
           exit 1
         fi
 
-        # ⚡️ 优化: 针对 GitHub Runner 资源限制进行调优
-        # 1. 降低分辨率: 限制最大宽度 1280 (720p)，防止高清视频导致 CPU 跑满 (speed < 1x)
-        # 2. 提升速度: preset ultrafast
-        # 3. 降低码率: 限制为 4500k，减轻编码压力和带宽波动
+        # 1. 尝试预下载视频 (解决网络不稳导致的 Input/output error)
+        # 使用 aria2c 多线程下载，超时时间 60秒
+        echo "⬇️ 正在将视频预下载到运行器 (Runer)..."
+        echo "💡 提示: 大文件可能需要几分钟下载，请耐心等待直播开始。"
+        
+        DOWNLOAD_SUCCESS=false
+        # -x 8: 8连接, -s 8: 8服务器, -k 1M: 块大小
+        if aria2c -x 8 -s 8 -k 1M --connect-timeout=60 --max-tries=5 -o local_video.mp4 "$VIDEO_URL"; then
+            echo "✅ 视频下载完成！准备推流本地文件。"
+            INPUT_SOURCE="local_video.mp4"
+            DOWNLOAD_SUCCESS=true
+        else
+            echo "⚠️ 视频下载失败 (超时或链接无效)，尝试直接推流 URL (风险较高)..."
+            INPUT_SOURCE="$VIDEO_URL"
+        fi
 
+        # 2. 构造 FFmpeg 命令
         CMD=(ffmpeg -re)
-        CMD+=(-reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_on_http_error 4xx,5xx -reconnect_delay_max 30)
+        
+        # 仅当使用远程 URL 时才添加重连参数
+        if [ "$DOWNLOAD_SUCCESS" = false ]; then
+            CMD+=(-reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_on_http_error 4xx,5xx -reconnect_delay_max 30)
+            CMD+=(-rw_timeout 15000000)
+        fi
+
         CMD+=(-protocol_whitelist file,http,https,tcp,tls,crypto)
-        CMD+=(-rw_timeout 15000000)
         CMD+=(-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-        CMD+=(-i "$VIDEO_URL")
+        CMD+=(-i "$INPUT_SOURCE")
+        
+        # 3. 编码参数优化
+        # preset ultrafast: 确保编码速度 > 1x
+        # scale 1280: 限制 720p 降低负载
         CMD+=(-c:v libx264)
         CMD+=(-preset ultrafast -tune zerolatency)
         CMD+=(-vf "scale='min(1280,iw)':-2,setsar=1")
@@ -220,5 +241,5 @@ jobs:
         CMD+=(-max_muxing_queue_size 4096)
         CMD+=(-f flv "$RTMP_URL")
 
-        echo "▶️ 开始运行 FFmpeg (Standard)..."
+        echo "▶️ 开始运行 FFmpeg..."
         "${CMD[@]}"
